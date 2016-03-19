@@ -1,6 +1,10 @@
 # context-dependent-environments
 A Scala library for Context-Dependent Evironments, where a key-value environment is passed down a module hierarchy and each returned value depends on the query’s origin as well as the key. CDE is provably superior to existing parameterization schemes because it avoids introducing non-local source code changes when a design is modified, while also enabling features for large-scale design space exploration of compositions of generators.
 
+This CDE library is intended for use with Chisel3.*. Earlier versions of Chisel include the Context-Dependent Environments as part of the language itself --  Chisel 2.* and earlier included modifiers to Module and Bundle functions. This functionality is deprecated in Chisel3, and therefore users of this library are responsible for instantiating and passing the Parameters structures as they see fit. Some examples are shown later in this README.
+
+This library is backwards compatible with Chisel 2.*, though care must be taken to instantiate the correct library's parameters when using this library with Chisel 2.*. 
+
 ## Parameterization
 
 Parameters objects are the core abstraction of the CDE library.
