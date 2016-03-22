@@ -31,11 +31,17 @@
   \end{quotation}
 }
 
-\title{Advanced Parameterization Manual}
+\title{Context Dependant Environment Library Manual}
 \author{Adam Izraelevitz \\
 EECS Department, UC Berkeley\\
 {\tt  adamiz@eecs.berkeley.edu}
 }
+
+\author{Updated by Megan Wachs \\
+SiFive, Inc
+{\tt  megan@sifive.com}
+}
+
 \IfFileExists{\jobname_date.sty}
 {\usepackage{\jobname_date}}
 {
@@ -71,9 +77,17 @@ The outline of this document is as follows: in Section \ref{sec:advanced}, we de
 \section{Advanced Parameterization}
 \label{sec:advanced}
 	
-Every {\em Chisel} Module has a member \code{params} of class \code{Parameters} that provides the mechanism for passing parameters between modules.
+In early versions of {\em Chisel}, every {\em Chisel} Module automatically
+had a member \code{params} of class \code{Parameters} that provides the mechanism for passing
+parameters between modules. {\em Chisel 3} extracts this advanced parameterization into a library,
+the Context Dependent Environment (\code{CDE}) library.
 
-This section describes the following features: (1) the \code{Parameters} class and associated methods/members; (2) the basic usage model; (3) syntactic sugar; (4) boilerplate code for exposing parameters to external users/programs; (5) advanced functionality via Views (site, here, up).
+This section describes the following features of the \code{CDE} library:
+(1) the \code{Parameters} class and associated methods/members;
+(2) the basic usage model;
+(3) syntactic sugar;
+(4) boilerplate code for exposing parameters to external users/programs;
+(5) advanced functionality via Views (site, here, up).
 
 \subsection{Classes and Methods}
 The \code{Parameters} class has the following base methods:
@@ -85,9 +99,10 @@ class Parameters {
   
   // returns new Parameters class
   def alter(mask:(Any,View,View,View)=>Any):Parameters 
-  
-  // returns a Module's Parameters instance
-  def params:Parameters
+
+  % This is not true for Chisel 3, correct?
+  %// returns a Module's Parameters instance
+  %def params:Parameters
 }
   \end{scala}
 \code{View} is a class containing a base method:
@@ -105,45 +120,79 @@ object Parameters {
 }
   \end{scala}
 
-The \code{Module} factory object now has an additional apply method:
-  \begin{scala}
-object Module {
-  // returns a new Module of type T, initialized with a Parameters instance if  _p !=None.
-  def apply[T<:Module](c: =>T)(implicit _p: Option[Parameters] = None):T
-}
-  \end{scala}
+  %This is not true for CDE / Chisel 3, correct?
+%The \code{Module} factory object now has an additional apply method:
+%  \begin{scala}
+%object Module {
+%  // returns a new Module of type T, initialized with a Parameters instance if % _p !=None.
+%  def apply[T<:Module](c: =>T)(implicit _p: Option[Parameters] = None):T
+%}
+%  
+%  \end{scala}
 
+  Chisel 3 no longer natively supports passing instances of
+  \code{Parameter} via the \code{Module} factory. Authors of Chisel 3
+  code are responsible for passing the \code{Parameter} instances as
+  they see fit. One suggested pattern is shown below:
+
+  \begin{scala}
+
+    object MyParameterizedModule (implicit val p : Parameters) extends
+    Module {
+      ...
+    }
+    
+    object MyParameterizedTopModule(topParams : Parameters)
+    extends Module {
+
+      implicit val p = topParams
+      val subModule = MyParameterizedModule()
+      
+    }
+
+  \end{scala}
+    
 \subsection{Basic Usage Model}
 
-This example shows the simplest usage of (1) quering params, (2) altering a Parameters object, and (3) passing a Parameters object to a Module:
+This example shows a simple usage of (1) querying params, (2) altering a Parameters object, and (3) passing a Parameters object to a Module:
 
 \begin{scala}
-class Tile extends Module { 
+class Tile (params : Parameters) extends Module { 
   val width = params[Int]('width') 
 }
+
 object Top {
   val parameters = Parameters.empty
   val tile_parameters = parameters.alter( (key,site,here,up) => {
     case 'width' => 64
   })
   def main(args:Array[String]) = {
-    chiselMain(args,()=>Module(new Tile)(Some(tile_parameters)))
+    chiselMain(args,()=>Module(new Tile(tile_parameters)))
   }
 }
 \end{scala}
 
-Within the Module \code{Tile}, the \code{params} member is queried by calling Parameters.apply with the key and return value type.
+Within the Module \code{Tile}, the \code{params} member is queried by calling Parameters.apply with the
+key and return value type.
 
-In \code{Top}, an empty parameters is created by calling Parameters.empty; then it is altered with a function of type \code{(Any,View,View,View) => Any} to return a new Parameters instance, which is assigned to \code{tile\_parameters}. 
+In \code{Top}, an empty parameters is created by calling
+Parameters.empty; then it is altered with a function of type
+\code{(Any,View,View,View) => Any} to return a new Parameters
+instance, which is assigned to \code{tile\_parameters}. The top-level
+\code{tile\_parameters} are passed to the constructor to the
+\code{Tile} module, where they are renamed to the special name
+\code{p}. 
 
-After wrapping \code{tile\_parameters} within \code{Some:Option[Parameters]}, it is passed as a second argument to the Module object when passed to \code{chiselMain}.
+%After wrapping \code{tile\_parameters} within
+%\code{Some:Option[Parameters]}, it is passed as a second argument to
+%the Module object when passed to \code{chiselMain}.
 
 \subsection{Syntactic Sugar: Field[T]}
 
 The simple example requires the return type \code{Int} must be included as an argument to the apply method, otherwise the Scala compiler will throw an error:
 
 \begin{scala}
-class Tile extends Module { 
+class Tile (params : Parameters) extends Module { 
   val width = params[Int]('width') 
 }
 \end{scala}
@@ -152,7 +201,7 @@ Alternatively, one can create a case object for each key which extends \code{Fie
 
 \begin{scala}
 case object Width extends Field[Int]
-class Tile extends Module { 
+class Tile (params : Parameters) extends Module { 
   val width = params(Width) 
 }
 \end{scala}
@@ -168,83 +217,132 @@ For the rest of the document, assume the key to every query is a case class that
 \label{fig:alter}
 \end{figure}
 
-As a module hierarchy is formed, \code{Parameters} objects are passed between a parent module and a child module. If specified by the programmer, these objects can be copied and altered prior to instantiating the child.
+As a module hierarchy is formed, \code{Parameters} objects may be
+passed between a parent module and a child module. In Chisel 3, this
+is the responsibility of the Module author(s), as it is not natively
+supported by Chisel itself.
+If specified by the programmer, these objects can be copied and altered prior to instantiating the child.
 
-Anytime an alteration is performed, {\em Chisel} internally copies the existing chain of key/value mappings and attaches the provided key/value mappings to the bottom of this chain. When a query is evaluated, it first queries the chain's bottom key/value mapping. If there is no match, the query is then evaluated on the next key/value mapping in the chain, and so forth. If a query reaches the top of the chain with no matches, {\em Chisel} triggers a \code{ParameterUndefinedException}.
+Any time an alteration is performed,
+%{\em Chisel}
+The {\em CDE} library internally copies the existing chain of
+key/value mappings and attaches the provided key/value mappings to the
+bottom of this chain. When a query is evaluated, it first queries the
+chain's bottom key/value mapping. If there is no match, the query is
+then evaluated on the next key/value mapping in the chain, and so
+forth. If a query reaches the top of the chain with no matches,
+%{\em Chisel}
+the {\em CDE} library
+triggers a \code{ParameterUndefinedException}.
 
-When instantiating a child, the parent can pass its \code{Parameters} object one of two ways:
+When instantiating a child, the parent can pass its \code{Parameters}
+object as it sees fit. The suggested usage is one of two ways:
+
 \begin{enumerate}
-  \item Explicitly pass its \code{Parameters} object to its child via a second argument to the Module factory, wrapped in \code{Option[Parameters]}:
+  \item Explicitly pass its \code{Parameters} object to its child via
+    an argument to its constructor:
+    %second argument to the Module factory, wrapped in \code{Option[Parameters]}:
 \begin{scala}
-class Tile extends Module { 
+
+class Core (p: Parameters) extends Module { 
+  val width = p(Width)
+}
+  
+class Tile (params : Parameters) extends Module { 
   val width = params(Width) 
-  val core = Module(new Core)(Some(params))
+  val core = Module(new Core(params))
   // Explicit passing of Tile's params to Core
 }
+
 \end{scala}
   \item Implicitly pass its \code{Parameters} object to its child:
 \begin{scala}
-class Tile extends Module { 
-  val width = params(Width)
+
+class Core (implicit val p : Parameters) extends Module { 
+  val width = p(Width)
+}
+
+class Tile (params : Parameters extends Module { 
+  implicit val p = params
+  val width = p(Width)
   val core = Module(new Core)
   // Implicit passing of Tile's params to Core
 }
 \end{scala}
 \end{enumerate}
 
-If a parent wants to copy/alter the child's dictionary, the parent has two methods to do so:
+If a parent wants to copy/alter the child's dictionary, the parent has three methods to do so:
 \begin{enumerate}
-  \item Provide a PartialFunction mapping as an argument to the Module factory. Internally, {\em Chisel} will copy the parent's \code{Parameters} object and apply the alteration:
-\begin{scala}
-class Tile extends Module { 
-  val width = params(Width)
-  val core = Module(new Core,{case Width => 32})
-  // Provide PartialFunction to Module factory constructor to alter Core's \code{Parameters} object
-}
-\end{scala}
+%  \item Provide a PartialFunction mapping as an argument to the Module factory. Internally, {\em Chisel} will copy the parent's \code{Parameters} object and apply the alteration:
+%\begin{scala}
+%class Tile extends Module { 
+%  val width = params(Width)
+%  val core = Module(new Core,{case Width => 32})
+%  // Provide PartialFunction to Module factory constructor to alter Core's \code{Parameters} object
+%}
+    %\end{scala}
+    
   \item Call the \code{Parameter.alter} function, which returns a new \code{Parameters} object. This approach gives the programmer access to the new \code{Parameters} object, as well as the ability to use \code{site}, \code{here}, and \code{up} (see Sections \ref{sec::site}, \ref{sec::here}, \ref{sec::up}) :
 \begin{scala}
-class Tile extends Module { 
+class Tile (params : Parameters) extends Module { 
   val width = params(Width)
   val core_params = params.alter(
     (pname,site,here,up) => pname match {
       case Width => 32
     })
-  val core = Module(new Core)(Some(core_params))
-  // Use the Parameter.alter method to return an altered Parameter object. Only use when site, here, or up mechanisms are needed
+  val core = Module(new Core(core_params))
+  // Use the Parameter.alter method to return an altered Parameter object. Only use when site, here, or up mechanisms are needed.
 }
 \end{scala}
+\item Call the simpler \code{Parameter.alterPartial} function, which returns
+  a new \code{Parameters} object. This approach still gives the
+  programmer access to the new \code{Parameters} object.
+  \begin{scala}
+class Tile (params : Parameters) extends Module { 
+  val width = params(Width)
+  val core_params = params.alterPartial ({
+    case Width => 32
+  })
+  val core = Module(new Core(core_params))
+}
+\end{scala}
+\item
+
 \end{enumerate}
-A more complicated example of a alteration chain is shown in Figure \ref{fig:alter} and describe below:
+A more complicated example of a alteration chain is shown in Figure
+\ref{fig:alter} and
+described below:
 \begin{scala}
-class Tile extends Module { 
+class Tile (params : Parameters) extends Module { 
   ...
-  val core = Module(new Core, {case FPU => true; case QDepth => 20; case Width => 64})
+  implicit val p = params.alterPartial({case FPU => true; case QDepth => 20; case Width => 64})
+  val core = Module(new Core())
 }
-class Core extends Module {
-  val fpu = params(FPU)
-  val width = params(Width)
-  val depth = params(Depth)
-  val queue = Module(new Queue,{case Depth => depth*2; case Width => 32})
+class Core (implicit val p: Parameters) extends Module {
+  val fpu   = p(FPU)
+  val width = p(Width)
+  val depth = p(Depth)
+  val queue = Module(new Queue(p.alterPartial({case Depth => depth*2;
+    case Width=>32}))
 }
-class Queue extends Module {
-  val depth = params(Depth)
-  val width = params(Width)
-  val mem = Module(new Memory,{case Size => depth * width})
+class Queue (implicit val p : Parameters) extends Module {
+  val depth = p(Depth)
+  val width = p(Width)
+  val mem = Module(new Memory,(p.alterPartial({case Size => depth * width})
 }
-class Memory extends Module {
-  val size = params(Size)
-  val width = params(Width)
+class Memory (implicit val p : Parameters) extends Module {
+  val size = p(Size)
+  val width = p(Width)
 }
 \end{scala}
 
 \subsection{ChiselConfig and Boilerplate}
 \label{sec::config}
 
-{\em Chisel}'s mechanism to seed the top-level parameters is through a \code{ChiselConfig} object. \code{ChiselConfig.topDefinitions} contains the highest parameter definitions and is of the following form:
+The {\em CDE} library's mechanism to seed the top-level parameters is through a \code{Config} object. \code{Config.topDefinitions} contains the highest parameter definitions and is of the following form:
 \begin{scala}
 case object Width extends Field[Int]
-class DefaultConfig extends ChiselConfig { 
+class DefaultConfig extends Config { 
   val topDefinitions:World.TopDefs = {
     (pname,site,here) => pname match {
       case Width => 32
@@ -252,17 +350,33 @@ class DefaultConfig extends ChiselConfig {
   }
 }
 \end{scala}
-Normally, a design calls \code{chiselMain.apply} to instantiate a design. To use {\em Chisel}'s parameterization mechanism and correctly seed a \code{ChiselConfig}, one should instead call \code{chiselMain.run} with the design NOT surrounded by the \code{Module} factory. The reason for this change is to preserve backwards compatibility with existing designs, although we intend to fix this in future releases. 
+Normally, a design calls \code{chiselMain.apply} to instantiate a
+design. To use the {\em CDE} library's parameterization mechanism and
+correctly seed a \code{Config},
+one should instead call \code{chiselMain.run} with the design NOT
+surrounded by the \code{Module} factory. The reason for this change is
+to preserve backwards compatibility with existing designs, although we
+intend to fix this in future releases.
+/!/!/! Have you?
 
+/!/!/! Do we have an example of this? My working one got deleted.
 An example of calling \code{chiselMain.run} is as follows:
 \begin{scala}
-object Run { 
-  def main(args: Array[String]): Unit = {
-    chiselMain.run(args, () => new Tile())
+  object Run {
+    def main(args: Array[String]): Unit = {
+      val configName = args(0)
+      val config = Class.forName(configName).newInstance.asInstanceOf[Config]
+      val world = config.toInstance
+      val paramsFromConfig: Parameters = Parameters.root(world)
+      chiselMain.run(args.drop(1), () => new Tile(paramsFromConfig))
   }
 }
 \end{scala}
-To instantiate a design with a specific \code{ChiselConfig}, simply call the {\em Chisel} compiler with the \code{-{-}configInstance {\it project\_name.configClass\_name}} argument.
+
+To instantiate a design with a specific \code{Config} in the example
+above, simply call the {\em Chisel} compiler with the
+{\it configClass\_name}} as the
+first argument.
 
 \subsection{Using site}
 \label{sec::site}
@@ -283,12 +397,12 @@ To help the designer express dependencies between parameters, we added the \code
 Suppose we have some modules which have following form:
 
 \begin{scala}
-class Core extends Module {
-  val data_width = params(Width)
+class Core (implicit val p: Parameters) extends Module {
+  val data_width = p(Width)
   ...
 }
-class Cache extends Module {
-  val line_width = params(Width)
+class Cache (implicit val p: Parameters) extends Module {
+  val line_width = p(Width)
   ...
 }
 \end{scala}
@@ -308,9 +422,9 @@ class DefaultConfig extends ChiselConfig {
     }
   }
 }
-class Tile extends Module { 
-  val core = Module(new Core, {case Location => 'core'})
-  val cache = Module(new Cache, {case Location => 'cache'})
+class Tile (params : Parameters) extends Module { 
+  val core = Module(new Core(params.alterPartial({case Location => 'core'}))
+  val cache = Module(new Cache(params.alterPartial({case Location => 'cache'})))
 }
 \end{scala}
 The top-level key/value mapping is using \code{site} to query the bottom of the chain for \code{Location}. Depending on what value returns (either \code{'core'} or \code{'cache'}), the top-level key/value mapping produces a different value (Figure \ref{fig:site}).
@@ -328,14 +442,14 @@ The top-level key/value mapping is using \code{site} to query the bottom of the 
 If a parameter is a deterministic function of other parameters expressed at the same group in the key/value mapping chain, one does not want to duplicate a value, as giving a new value would require multiple changes. Instead, one can use the \code{here} mechanism to query the same group of key/value mappings that \code{here} was called:
 
 \begin{scala}
-class Tile extends Module { 
+class Tile (params: Paramters) extends Module { 
   val cache_params = params.alter(
     (pname, site, here, up) => pname match {
       case Sets => 128
       case Ways => 4
       case Size => here(Sets)*here(Ways)
     })
-  val cache = Module(new Cache)(cache_params)
+  val cache = Module(new Cache(cache_params))
 }
 \end{scala}
 
@@ -372,7 +486,7 @@ class Cache(val sets:Int, val ways:Int) extends Module {...}
 \end{scala}
 
 No source code changes are necessary to explore our parameter space, and all searchable parameters are exposed at the top. In addition, adding a new parameter, because this example is simple, requires very few changes to our source code.
-
+                            
 \subsection{Disjoint Parameter Sets}
 
 \begin{figure}[h]
@@ -444,7 +558,10 @@ The series of require statements is extremely brittle, as any change in our desi
 
 This flaw in configuration objects leads us towards the first functionality of our custom parameterization solution, namely a copy/alter dictionary of type \code{Parameters}. We use this key-value structure (map or dictionary) to store a module's parameters.
 
-To parameterize the design in Figure \ref{fig:ex3}, we implicitly pass the \code{Parameters} object and, if an alter is needed, provide a \code{PartialFunction} to the \code{Module} factory. Recall from Section \ref{sec:advanced} that the class \code{MyConfig} (extends \code{ChiselConfig}) must be passed to the {\em Chisel} compiler via the \code{-{-}configInstance} flag to seed the top-level parameters:
+To parameterize the design in Figure \ref{fig:ex3}, we implicitly pass
+the \code{Parameters} object and, if an alter is needed, provide a
+\code{PartialFunction} to the \code{Module} factory.
+%Recall from Section \ref{sec:advanced} that the class \code{MyConfig} (extends \code{ChiselConfig}) must be passed to the {\em Chisel} compiler via the \code{-{-}configInstance} flag to seed the top-level parameters:
 \begin{scala}
 class DefaultConfig() extends ChiselConfig {
   val top:World.TopDefs = {
@@ -460,37 +577,38 @@ class DefaultConfig() extends ChiselConfig {
     }
   }
 }
-class Tile extends Module { 
-  val core = Module(new Core)(params)
-  val ic_sets = params(Ic_sets)
-  val ic_ways = params(Ic_ways)
-  val icache = Module(new Cache, {case Sets => ic_sets; case Ways => ic_ways})
+class Tile (params : Parameters) extends Module { 
+  implicit val p = p
+  val core = Module(new Core)
+  val ic_sets = p(Ic_sets)
+  val ic_ways = p(Ic_ways)
+  val icache = Module(new Cache(p.alterPartial({case Sets => ic_sets; case Ways => ic_ways}))
   // we can rename Ic_sets to Sets, effectively isolating Cache's query keys from any design hierarchy dependence
-  val dc_sets = params(Dc_sets)
-  val dc_ways = params(Dc_ways)
-  val dcache = Module(new Cache, {case Sets => dc_sets; case Ways => dc_ways})
+  val dc_sets = p(Dc_sets)
+  val dc_ways = p(Dc_ways)
+  val dcache = Module(new Cache, p.alterPartial({case Sets => dc_sets; case Ways => dc_ways})
   // similarly we rename Dc_sets to Sets and Dc_ways to Ways
 }
-class Core extends Module {
-  val iqdepth = params(IQ_depth)
-  val iq = Module(new Queue, {case Depth => iqdepth})
-  val lsqdepth = params(LSQ_depth)
-  val lsq = Module(new Queue, {case Depth => lsqdepth})
+class Core (implicit val p : Parameters) extends Module {
+  val iqdepth = p(IQ_depth)
+  val iq = Module(new Queue (p.alterPartial({case Depth => iqdepth}))
+  val lsqdepth = p(LSQ_depth)
+  val lsq = Module(new Queue (p.alterPartial({case Depth => lsqdepth}))
   ...
 }
-class Queue extends Module {
-  val depth = params(Depth)
-  val mem = Module(new Memory,{case Size => depth})
+class Queue (implicit val p : Parameters) extends Module {
+  val depth = p(Depth)
+  val mem = Module(new Memory (p.alterPartial({case Size => depth})))
   ...
 }
-class Cache extends Module {
-  val sets = params(Sets)
-  val ways = params(Ways)
-  val mem = Module(new Memory,{case Size => sets*ways})
+class Cache (implicit val p: Parameters) extends Module {
+  val sets = p(Sets)
+  val ways = p(Ways)
+  val mem = Module(new Memory(p.alterPartial({case Size => sets*ways}))
 }
-class Memory extends Module {
-  val size = params(Size)
-  val width = params(Width)
+class Memory (implicit val p: Paramters) extends Module {
+  val size = p(Size)
+  val width = p(Width)
 }
 \end{scala}
 
@@ -534,44 +652,45 @@ class DefaultConfig() extends ChiselConfig {
     }
   }
 }
-class Tile (val params:Parameters) extends Module { 
-  val core = Module(new Core,{Location => 'incore'})
+class Tile (val params: Parameters) extends Module { 
+  implicit val p = params
+  val core = Module(new Core(p.alterPartial({Location => 'incore'})))
   // we can give core and its child modules a location identifier
   
-  val cacheparams = params.alter({Location => 'incache'})
+  val cacheparams = p.alterPartial({Location => 'incache'})
   // we can give both caches and all their child modules a location identifier
-  val icache = Module(new ICache)(cacheparams)
-  val dcache = Module(new DCache)(cacheparams)
+  val icache = Module(new ICache(cacheparams))
+  val dcache = Module(new DCache(cacheparams))
 }
-class Core extends Module {
+class Core (implicit val p : Parameters) extends Module {
   val iq = Module(new IQ)
   val lsq = Module(new LSQ)
   ...
 }
-class IQ extends Module {
-  val depth = params(Depth)
-  val mem = Module(new Memory, {Size = depth})
+class IQ (implicit val p: Parameters) extends Module {
+  val depth = p(Depth)
+  val mem = Module(new Memory(p.alterPartial({Size => depth}))
   // in some cases, using copy/alter is preferred instead of \code{site} (see Design Heuristics for more details)
   ...
 }
-class LSQ extends Module {
-  val depth = params(Depth)
-  val mem = Module(new Memory, {Size = depth})
+class LSQ (implicit val p: Parameters) extends Module {
+  val depth = p(Depth)
+  val mem = Module(new Memory(p.alterPartial({Size => depth})))
   ...
 }
-class ICache extends Module {
-  val sets = params(Sets)
-  val ways = params(Ways)
-  val mem = Module(new Memory,{Size => sets*ways})
+class ICache (implicit val p: Parameters) extends Module {
+  val sets = p(Sets)
+  val ways = p(Ways)
+  val mem = Module(new Memory (p.alterPartial({Size => sets*ways})))
 }
-class DCache extends Module {
-  val sets = params(Sets)
-  val ways = params(Ways)
-  val mem = Module(new Memory, {Size => sets*ways})
+class DCache (implicit val p: Parameters) extends Module {
+  val sets = p(Sets)
+  val ways = p(Ways)
+  val mem = Module(new Memory (p.alterPartial({Size => sets*ways})))
 }
-class Memory extends Module {
-  val size = params(Size)
-  val ecc = params(ECC)
+class Memory(implicit val p: Parameters) extends Module {
+  val size = p(Size)
+  val ecc = p(ECC)
 }
 \end{scala}
 
@@ -580,7 +699,7 @@ class Memory extends Module {
 \begin{figure}[h]
 \centering
 \includegraphics[width=1.5in]{figs/ex5.pdf}
-\caption{To derive a parameter from another top-level parameter, we can use the here functionality to avoid duplicating a parameter value.}
+\caption{To derive a parameter from another top-level parameter, we can use the \code{here} functionality to avoid duplicating a parameter value.}
 \label{fig:ex5}
 \end{figure}
 
@@ -599,7 +718,7 @@ class DefaultConfig() extends ChiselConfig {
   }
 }
 \end{scala}
-However, if we later increase the number of physical registers, we need to remember to update the value in the derivation of the ROB size. To avoid this potential error, one should use the 'here' functionality to query the same group of parameters:
+However, if we later increase the number of physical registers, we need to remember to update the value in the derivation of the ROB size. To avoid this potential error, one should use the \code{here} functionality to query the same group of parameters:
 
 \begin{scala}
 class DefaultConfig() extends ChiselConfig {
@@ -618,30 +737,32 @@ class DefaultConfig() extends ChiselConfig {
 \begin{figure}[h]
 \centering
 \includegraphics[width=1.5in]{figs/ex6.pdf}
-\caption{To rename or programmatically alter a parameter based on the previous value, one can use the up mechanism to query the parent's \code{Parameters} object.}
+\caption{To rename or programmatically alter a parameter based on the previous value, one can use the \code{up} mechanism to query the parent's \code{Parameters} object.}
 \label{fig:ex6}
 \end{figure}
 
 In Figure \ref{fig:ex6}, both cache modules query for a \code{sets} parameter. However, \code{Tile} has \code{ic\_sets} and \code{dc\_sets} as parameters. To rename the parameters, we can read the parent value and alter the child's \code{Parameters} object:
 
 \begin{scala}
-class Tile extends Module {
+class Tile (params : Parameters) extends Module {
+  implicit val p = params
   val ic_sets = params(Ic_sets)
-  val ic = Module(new Cache,{case Sets => ic_sets})
+  val ic = Module(new Cache(p.alterPartial({case Sets => ic_sets})))
   val dc_sets = params(Ic_sets)
-  val dc = Module(new Cache,{case Sets => dc_sets})
+  val dc = Module(new Cache(p.alterPartial({case Sets => dc_sets})))
     ...
 }
 \end{scala}
-Alternatively, we can use the 'up' mechanism within the Parameters.alter method to query the parent module's Parameter object:
+Alternatively, we can use the 'up' mechanism within the
+\code{Parameters.alter} method to query the parent module's Parameter object:
 \begin{scala}
-class Tile extends Module {
+class Tile (val params : Parameters) extends Module {
   val ic_params = params.alter(
     (pname,site,here,up) => pname match {
       case Sets => up(Ic_sets)
     }
   )
-  val ic = Module(new Cache)(ic_params)
+  val ic = Module(new Cache(ic_params))
   ...
 }
 \end{scala}
@@ -650,11 +771,16 @@ In general one should never use the \code{up} mechanism as it is more verbose. H
 \section{External Interface}
 \label{sec:knobs}
 
-So far, this document has only describe mechanisms to manipulate parameters at a top-level class (\code{ChiselConfig}). However, to actually generate multiple C++ or Verilog designs, we need to manually change these parameters.
+So far, this document has only described mechanisms to manipulate parameters at a top-level class (\code{ChiselConfig}). However, to actually generate multiple C++ or Verilog designs, we need to manually change these parameters.
 
 One would prefer to express design constraints (parameter ranges, dependencies, constraints) and leave the actual instantiation of a specific design separate from the expression of the valid design space.
 
-With that motivation, {\em Chisel} has an additional feature based around the concept of ``Knobs,'' or parameters that are created specifically to explore a design space. This section will describe Knobs and their uses, the Dump Object, adding constraints to parameters/Knobs, and the two modes to running the Chisel compiler: --configCollect and --configInstance.
+With that motivation, the {\em CDE} library has an additional feature
+based around the concept of ``Knobs,'' or parameters that are created
+specifically to explore a design space. This section will describe
+Knobs and their uses, the Dump Object, adding constraints to
+parameters/Knobs.
+%and the two modes to running the Chisel compiler: --configCollect and --configInstance.
 
 \subsection{Knobs}
 A generator has some parameters that are fixed, and others that dictate the specific design point being generated. These generator-level parameters, called Knobs, have an additional key-value mapping to allow external programs and users to easily overwrite their values.
@@ -676,9 +802,15 @@ class MyConfig extends ChiselConfig {
 }
 \end{scala}
 
-When the query \code{NTiles} matches within topDefinitions, the \code{Knob('NTILES')} is returned. Internally, Chisel will lookup \code{'NTILES'} within MyConfig.knobValues and return 1. As described in Section \ref{sec::config}, the flag required to execute a generator with this specific config is:
+When the query \code{NTiles} matches within topDefinitions, the
+\code{Knob('NTILES')} is returned. Internally,
+the CDE library will lookup \code{'NTILES'} within MyConfig.knobValues
+and return 1.
+As described in the example in Section \ref{sec::config}, the
+to execute a generator with this specific config, provide it as the
+first argument:
 
-\code{sbt run ... -{-}configInstance example.MyConfig}
+\code{sbt run MyConfig...}
 
 Suppose we wanted to instantiate a new design that had two tiles: simply use Scala's class inheritance and overwrite the knobValues method:
 
@@ -691,9 +823,11 @@ class MyConfig2 extends MyConfig {
 }
 \end{scala}
 
-Notice that both classes can exist in the source code, so both designs can be instantiated from the commandline. For the new design with two tiles, simply call:
+Notice that both classes can exist in the source code, so both designs
+can be instantiated from the commandline.
+For the new design with two tiles, simply call:
 
-\code{sbt run ... -{-}configInstance example.MyConfig2}
+\code{sbt run MyConfig2 ... }
 
 \subsection{Dump}
 
@@ -714,7 +848,9 @@ class MyConfig extends ChiselConfig {
 }
 \end{scala}
 
-The name and value of each dumped parameter will be written to a \code{*.knb} file located in the directory set by \code{-{-}targetDir {\it path}}.
+The name and value of each dumped parameter can be
+written to a \code{*.knb} file.
+%located in the directory set by \code{-{-}targetDir {\it path}} :
 
 \subsection{Constraints}
 
@@ -748,7 +884,7 @@ class BadConfig extends ChiselConfig {
 }
 
 // throws 'Constriant failed' error
-sbt run ... --configInstance example.BadConfig 
+sbt run BadConfig ... 
 \end{scala}
 
 Constraints can be declared anywhere in the design, not just at the top level, by calling a Parameter's \code{constrain} method:
@@ -765,24 +901,47 @@ class MyConfig extends ChiselConfig {
     case 'NTILES' => 1 // generator parameter assignment
   }
 }
-class Tile extends Module {
+class Tile (val params: Parameters) extends Module {
   params.constrain( ex => ex(NTiles) >  0 )
   params.constrain( ex => ex(NTiles) <= 4 )
 }
-object Run { 
-  def main(args: Array[String]): Unit = {
-    chiselMain.run(args, () => new Tile())
+object Run {
+  def main (args: Array[String]): Unit = {
+    val configName = args(0)
+    val config = Class.forName(configName).newInstance.asInstanceOf[Config]
+    val world = config.toInstance
+    val paramsFromConfig: Parameters = Parameters.root(world)
+    chiselMain.run(args.drop(1), () => new Tile(paramsFromConfig))
   }
 }
 
-sbt runMain example.Run ... --configInstance example.MyConfig
+sbt runMain MyConfig ...
 \end{scala}
 
-Finally, if a designer wants to know a design's constraints, they can execute Chisel with the \code{-{-}configCollect {\it project\_name.config\_name}} flag, which will dump a list of the constraints to a \code{*.cst} file, located in the path specificed by \code{-{-}targetDir {\it path}}:
+%Finally, if a designer wants to know a design's constraints, they can execute Chisel with the \code{-{-}configCol%lect {\it project\_name.config\_name}} flag, which will dump a list of the constraints to a \code{*.cst} file, lo%cated in the path specificed by \code{-{-}targetDir {\it path}}:
 
-\begin{scala}
-sbt runMain example.Run ... --configCollect example.MyConfig --targetDir <path>
+If a designer would like to see a design's constraints, parameters, knobs, and configuration parameters,
+these can all be dumped to files. See the code below for an example:
+
+%\begin{scala}
+%sbt runMain example.Run ... --configCollect example.MyConfig --targetDir <path>
+%\end{scala}
+
+\begin {scala}
+  val pdFile = createOutputFile(configClassName + ".prm")
+  pdFile.write(ParameterDump.getDump)
+  pdFile.close
+  val v = createOutputFile(configClassName + ".knb")
+  v.write(world.getKnobs)
+  v.close
+  val d = new java.io.FileOutputStream(Driver.targetDir + "/" + configClassName + ".cfg")
+  d.write(paramsFromConfig(ConfigString))
+  d.close
+  val w = createOutputFile(configClassName + ".cst")
+  w.write(world.getConstraints)
+  w.close
 \end{scala}
+
 
 \section{Design Heuristics}
 \label{sec:heuristics}
