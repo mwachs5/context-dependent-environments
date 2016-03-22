@@ -13,11 +13,9 @@
 version   := 2.2.0
 
 PDFLATEX  := pdflatex
-WWW_PAGES := index.html community.html documentation.html download.html faq.html releases.html
-WWW_EXTRA := manual.html getting-started.html parameters.html
 
 # The following subdirectories build documentation correctly.
-PDF_DIRS	:= installation manual tutorial getting-started talks/dac12 parameters cheatsheet
+PDF_DIRS	:= parameters
 # Define a function to map PDF_DIRS to a PDF base name.
 # Basically, every directory is the base name of the pdf except for dac12-talk.
 pdf_base_name_from_dir = $(subst talks/dac12,dac12-talk,$(1))
@@ -49,19 +47,9 @@ vpath %.tex $(addprefix $(srcDir)/,$(PDF_DIRS))
 
 vpath %.mtt $(addprefix $(srcDir)/,$(PDF_DIRS))
 
-all: $(WWW_PAGES) $(WWW_EXTRA) $(PDFS)
-
-extra: $(WWW_EXTRA)
-
-html: $(WWW_PAGES)
+all: $(PDFS)
 
 pdf: $(PDFS)
-
-install: all
-	install -d $(installTop)/$(version)/figs
-	install -m 664 $(foreach figdir,manual parameters tutorial,$(wildcard $(srcDir)/$(figdir)/figs/*.png)) $(installTop)/$(version)/figs
-	install -m 664 $(WWW_EXTRA) $(PDFS) $(installTop)/$(version)
-	install -m 664 $(WWW_PAGES) $(installTop)
 
 # NOTE: We follow the recommended practice of running the *latex tools twice
 # so references (citations and figures) are correctly handled.
@@ -78,31 +66,13 @@ install: all
 # if we don't remove the manual.aux file
 chisel-%.pdf: %.tex %_date.sty
 	rm -f $(subst .tex,.aux,$<)
-	cd $(dir $<) && for c in 0 1; do pdflatex -file-line-error -interaction nonstopmode -output-directory $(PWD) $(notdir $<) ; done
+	cd $(dir $<) && for c in 0 1; do $(PDFLATEX) -file-line-error -interaction nonstopmode -output-directory $(PWD) $(notdir $<) ; done
+	echo "worked til now"
 	mv $(subst .tex,.pdf,$(notdir $<)) $@
-
-%.html: %.tex %_date.sty
-	cd $(dir $<) && for c in 0 1; do htlatex $(notdir $<) $(PWD)/$(srcDir)/html.cfg "" -d/$(PWD)/ ; done
-	mv $(subst .tex,.html,$(notdir $<)) $@~
-	$(srcDir)/../bin/tex2html.py $@~ $@
-
-%.man: %.mtt
-	# cd into the directory containing the .tex file and massage it
-	cd $(dir $<) && \
-	sed -e "s/@VERSION@/$(RELEASE_TAG)/" -e "s/@DATE@/$(RELEASE_DATE)/" $(notdir $<) > $(basename $@).ttex ;\
-	latex2man $(basename $@).ttex $@
-
-%.html: $(srcDir)/templates/%.html $(srcDir)/templates/base.html
-	$(srcDir)/../bin/jinja2html.py $(notdir $<) $@
-
-releases.html:	$(srcDir)/templates/releases.html $(srcDir)/templates/base.html
-	sed -e "s/@VERSION@/$(RELEASE_TAG)/" -e "s/@DATE@/$(RELEASE_DATE)/" $< > $(dir $<)/$@.tmp
-	$(srcDir)/../bin/jinja2html.py $@.tmp $@ && ${RM} $(dir $<)/$@.tmp
 
 clean:
 	-rm -f $(TEX_TEMP_FILES)
 	-rm -f $(STY_TEMP_FILES)
-	# Remove any .png files that are created from pdfs
 	-rm -f $(subst .pdf,.png,$(wildcard parameters/figs/*.pdf))
 	-rm -f $(addprefix manual/figs/,bits-1.png bits-and.png bits-or-and.png node-hierarchy.png type-hierarchy.png)
 	-rm -f $(addprefix tutorial/figs/,DUT.png DUT.svg condupdates.png)
