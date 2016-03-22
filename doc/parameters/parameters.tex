@@ -265,7 +265,7 @@ class Core (implicit val p : Parameters) extends Module {
 class Tile (params : Parameters extends Module { 
   implicit val p = params
   val width = p(Width)
-  val core = Module(new Core)
+  val core = Module(new Core())
   // Implicit passing of Tile's params to Core
 }
 \end{scala}
@@ -322,13 +322,13 @@ class Core (implicit val p: Parameters) extends Module {
   val fpu   = p(FPU)
   val width = p(Width)
   val depth = p(Depth)
-  val queue = Module(new Queue(p.alterPartial({case Depth => depth*2;
+  val queue = Module(new Queue()(p.alterPartial({case Depth => depth*2;
     case Width=>32}))
 }
 class Queue (implicit val p : Parameters) extends Module {
   val depth = p(Depth)
   val width = p(Width)
-  val mem = Module(new Memory,(p.alterPartial({case Size => depth * width})
+  val mem = Module(new Memory()(p.alterPartial({case Size => depth * width})
 }
 class Memory (implicit val p : Parameters) extends Module {
   val size = p(Size)
@@ -357,9 +357,7 @@ one should instead call \code{chiselMain.run} with the design NOT
 surrounded by the \code{Module} factory. The reason for this change is
 to preserve backwards compatibility with existing designs, although we
 intend to fix this in future releases.
-/!/!/! Have you?
 
-/!/!/! Do we have an example of this? My working one got deleted.
 An example of calling \code{chiselMain.run} is as follows:
 \begin{scala}
   object Run {
@@ -579,7 +577,7 @@ class DefaultConfig() extends ChiselConfig {
 }
 class Tile (params : Parameters) extends Module { 
   implicit val p = p
-  val core = Module(new Core)
+  val core = Module(new Core())
   val ic_sets = p(Ic_sets)
   val ic_ways = p(Ic_ways)
   val icache = Module(new Cache(p.alterPartial({case Sets => ic_sets; case Ways => ic_ways}))
@@ -654,7 +652,7 @@ class DefaultConfig() extends ChiselConfig {
 }
 class Tile (val params: Parameters) extends Module { 
   implicit val p = params
-  val core = Module(new Core(p.alterPartial({Location => 'incore'})))
+  val core = Module(new Core()(p.alterPartial({Location => 'incore'})))
   // we can give core and its child modules a location identifier
   
   val cacheparams = p.alterPartial({Location => 'incache'})
@@ -663,30 +661,30 @@ class Tile (val params: Parameters) extends Module {
   val dcache = Module(new DCache(cacheparams))
 }
 class Core (implicit val p : Parameters) extends Module {
-  val iq = Module(new IQ)
-  val lsq = Module(new LSQ)
+  val iq = Module(new IQ())
+  val lsq = Module(new LSQ())
   ...
 }
 class IQ (implicit val p: Parameters) extends Module {
   val depth = p(Depth)
-  val mem = Module(new Memory(p.alterPartial({Size => depth}))
+  val mem = Module(new Memory()(p.alterPartial({Size => depth}))
   // in some cases, using copy/alter is preferred instead of \code{site} (see Design Heuristics for more details)
   ...
 }
 class LSQ (implicit val p: Parameters) extends Module {
   val depth = p(Depth)
-  val mem = Module(new Memory(p.alterPartial({Size => depth})))
+  val mem = Module(new Memory()(p.alterPartial({Size => depth})))
   ...
 }
 class ICache (implicit val p: Parameters) extends Module {
   val sets = p(Sets)
   val ways = p(Ways)
-  val mem = Module(new Memory (p.alterPartial({Size => sets*ways})))
+  val mem = Module(new Memory ()(p.alterPartial({Size => sets*ways})))
 }
 class DCache (implicit val p: Parameters) extends Module {
   val sets = p(Sets)
   val ways = p(Ways)
-  val mem = Module(new Memory (p.alterPartial({Size => sets*ways})))
+  val mem = Module(new Memory ()(p.alterPartial({Size => sets*ways})))
 }
 class Memory(implicit val p: Parameters) extends Module {
   val size = p(Size)
@@ -747,9 +745,9 @@ In Figure \ref{fig:ex6}, both cache modules query for a \code{sets} parameter. H
 class Tile (params : Parameters) extends Module {
   implicit val p = params
   val ic_sets = params(Ic_sets)
-  val ic = Module(new Cache(p.alterPartial({case Sets => ic_sets})))
+  val ic = Module(new Cache()(p.alterPartial({case Sets => ic_sets})))
   val dc_sets = params(Ic_sets)
-  val dc = Module(new Cache(p.alterPartial({case Sets => dc_sets})))
+  val dc = Module(new Cache()(p.alterPartial({case Sets => dc_sets})))
     ...
 }
 \end{scala}
