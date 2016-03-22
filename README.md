@@ -64,3 +64,7 @@ Constraints are expressions that set limits on Parameters and Knobs and can be u
 ## Configs
 
 Config objects provide a way to represent particular configurations of a design as Scala source code. They contain the top-level Parameters environment that contains any values not bound within the design, bindings for Knob values left free by the Parameters, and any top-level constraints that are to be applied to design space exploration.
+
+## Documentation
+
+Documentation is provided along with this library, see doc/parameters.pdf
