@@ -1,15 +1,15 @@
 # context-dependent-environments
 A Scala library for Context-Dependent Evironments, where a key-value environment is passed down a module hierarchy and each returned value depends on the query’s origin as well as the key. CDE is provably superior to existing parameterization schemes because it avoids introducing non-local source code changes when a design is modified, while also enabling features for large-scale design space exploration of compositions of generators.
 
-This CDE library is intended for use with Chisel3.*. Earlier versions of Chisel include the Context-Dependent Environments as part of the language itself --  Chisel 2.* and earlier included modifiers to Module and Bundle functions. This functionality is deprecated in Chisel3, and therefore users of this library are responsible for instantiating and passing the Parameters structures as they see fit. Some examples are shown later in this README.
+This CDE library is intended for use with Chisel 3.\* and later. Earlier versions of Chisel include the Context-Dependent Environments as part of the language itself. Chisel 2.\* included modifiers to Module and Bundle functions to support passing Parameters natively. This functionality is deprecated in Chisel 3; therefore users of this library are responsible for instantiating and passing the Parameters structures as they see fit. Some examples are shown later in this README.
 
-This library is backwards compatible with Chisel 2.*, though care must be taken to instantiate the correct library's parameters when using this library with Chisel 2.*. 
+This library is backwards compatible with Chisel 2.\*, though care must be taken to instantiate the correct library's parameters when using this library with Chisel 2.\*. 
 
 ## Parameterization
 
 Parameters objects are the core abstraction of the CDE library.
 Fundementally they are wrappers around Scala's partial functions.
-You can look up a specific parameter by querying a Parameters object with a key, and if any case in the partial function's cases match the key you provide, the parameters object will return the supplied value. Critically, this supplied value can be dependent on any other parameters defined where the lookup is performed.
+You can look up a specific parameter by querying a Parameters object with a key, and if any case in the partial function's cases match the key you provide, the Parameters object will return the supplied value. Critically, this supplied value can be dependent on any other parameters defined where the lookup is performed.
 
 ### Looking up a key's value
 
